@@ -216,14 +216,12 @@ class OpenAIChatbot:
                     if self.error_callback:
                         self.error_callback(func_name, str(e))
 
-                    # Remove the last message that had the function role
-                    self.rollback()
                     # Remove the last message where the AI tried to call the function
                     self.rollback()
 
                     # Ask the AI to apologize and explain the error
                     return self.respond(
-                        f"An error occurred when trying to execute the function '{func_name}'. Please apologize and explain this to the user."
+                        f"An error occurred when trying to execute the function '{func_name}'. Please tell the user and apologize. (Don't ask to troubleshoot)"
                     )
 
             else:
