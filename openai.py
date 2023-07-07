@@ -208,8 +208,10 @@ class OpenAIChatbot:
                     )
 
                     # Generate second response where the AI can respond to the function result
-                    # and overwrite the first response
-                    response = self.create_response()
+                    # and restart the process (check if function, check if ends in punctuation, etc.)
+                    #
+                    # We will continue to do this until the AI gives an assistant response that ends in punctuation.
+                    return self.generate_response()
 
                 except Exception as e:
                     # Call the error callback with information
@@ -259,6 +261,9 @@ class OpenAIChatbot:
     def respond(self, user_message):
         """
         Adds a message to the conversation history and generates a response using the OpenAI completion API.
+
+        Tries to keep running until the AI provides an assistant response that ends in punctuation,
+        allowing the AI to call functions consecutively.
 
         Args:
             user_message: The message to add to the conversation history.
