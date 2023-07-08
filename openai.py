@@ -1,3 +1,4 @@
+import enum
 import json
 import os
 import openai
@@ -5,6 +6,122 @@ from tiktoken import Tokenizer
 from zara_personality import primer as zara_primer
 
 openai.api_key = os.getenv("openai")
+
+
+class Model(enum.Enum):
+    GPT3 = "gpt-3.5-turbo"
+    GPT3_LARGE = "gpt-3.5-turbo-16k"
+    GPT4 = "gpt-4"
+    GPT4_LARGE = "gpt-4-32k"
+
+
+# Model context window sizes
+Model_Token_Limit = {
+    Model.GPT3: 4000,
+    Model.GPT3_LARGE: 16000,
+    Model.GPT4: 8000,
+    Model.GPT4_LARGE: 32000,
+}
+
+
+class OpenAIChatbot2:
+    model: Model = Model.GPT3_LARGE
+    max_response_tokens: int = None
+    token_limit: int = None
+
+    primers: list[dict[str, str]]
+    functions: list[dict]
+    functions_callable: dict[str, function]
+
+    # This is a list of messages that are not primers
+    conversation: list[dict[str, str]]
+
+    def __init__(
+        self,
+        primers: list[dict[str, str]] = zara_primer,
+        functions: list[dict] = [],
+        functions_callable: dict[str, function] = [],
+        conversation: list[dict[str, str]] = [],
+        model: Model = Model.GPT3_LARGE,
+        max_response_tokens: int = None,
+        token_limit: int = None,
+    ):
+        self.model = model
+        self.max_response_tokens = max_response_tokens
+
+        self.primers = primers
+        self.functions = functions
+        self.functions_callable = functions_callable
+
+        self.conversation = conversation
+
+        # Set the token limit and constrain it to the default max tokens
+        if token_limit is not None:
+            self.token_limit = min(token_limit, self.max_tokens)
+
+    @property
+    def max_tokens(self):
+        """
+        Returns the maximum number of tokens allowed in the conversation history after the primers and functions have been added.
+        """
+        tl: int = Model_Token_Limit[self.model] - self.tokens(
+            self.primers + self.functions
+        )
+
+        # We need to make room for the assistant's response
+        # If the max_response_tokens is None, we make room for a reasonable response length
+        if self.max_response_tokens is not None:
+            tl = tl - self.max_response_tokens
+        else:
+            # Why 512? It's a nice number! Not too long, not too short, juuuust right.
+            tl = tl - 512
+
+        if self.token_limit is not None:
+            # After
+            tl = min(tl, self.token_limit)
+
+    @property
+    def messages(self):
+        """
+        Returns the entire list of messages, including primers and conversation messages.
+        This is what gets passed to the API. (Functions are not included, as they are passed to the API separately)
+        """
+        return self.primers + self.conversation
+
+    @property
+    def available_tokens(self):
+        """
+        Returns the number of tokens available for the conversation history.
+
+        This is after the primers, functions, and conversation messages have been added,
+        and after making room for the assistant's response.
+        """
+        return self.max_tokens - self.tokens(self.conversation)
+
+    ##########################################################################################
+    # Methods
+    ##########################################################################################
+    def tokens(self, messages: list[dict[str, str]]):
+        """
+        Counts the total number of tokens in a list of messages.
+        """
+        tokenizer = Tokenizer()
+
+        # Count the tokens in each message's content (and name if it's a function) and sum them.
+        total_tokens = 0
+        for message in messages:
+            total_tokens += tokenizer.count_tokens(message["content"])
+            if "name" in message:
+                total_tokens += tokenizer.count_tokens(message["name"])
+        return total_tokens
+
+    def update_conversation(self, message_content: str, role="user", name=None):
+        """
+        Adds a message to the conversation history and trims the history if necessary.
+
+        If there's only one user message and it's too long, it's characters are trimmed.
+        If there's more than one user message, the oldest message is removed (recursive until there's enough space).
+        """
 
 
 class OpenAIChatbot:
